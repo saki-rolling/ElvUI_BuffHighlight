@@ -4,5 +4,4 @@ P["BH"] = {
 	["enable"] = true,
 	["colorBackdrop"] = false,
 	["spells"] = {},
-	["refreshRate"] = 0.1,
 }

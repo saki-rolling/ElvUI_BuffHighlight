@@ -2,8 +2,22 @@ local E, L, V, P, G = unpack(ElvUI);
 local BH = E:NewModule('BuffHighlight', 'AceHook-3.0'); 
 local EP = LibStub("LibElvUIPlugin-1.0") 
 local UF = E:GetModule('UnitFrames')
-local addon, ns = ... 
+local addon, ns = ...
 
+local CreateFrame = CreateFrame
+local UnitIsTapDenied = UnitIsTapDenied
+local UnitReaction = UnitReaction
+local UnitIsPlayer = UnitIsPlayer
+local UnitClass = UnitClass
+local UnitIsDeadOrGhost = UnitIsDeadOrGhost
+local ReloadUI = ReloadUI
+
+local ElvUF = E.oUF
+assert(ElvUF, 'ElvUI was unable to locate oUF.')
+
+local f = CreateFrame("Frame")
+f:RegisterEvent("UNIT_AURA")
+E:RegisterModule(BH:GetName())
 
 --GLOBALS: hooksecurefunc
 local select, pairs, unpack = select, pairs, unpack
@@ -49,55 +63,98 @@ local function AuraHighlighted(frame)
 	return r ~= 0 or g ~= 0 or b ~= 0
 end
 
--- Resets the health color with default ElvUI colors
-local function resetHealthBarColor(frame)
-	-- Get default color
+--Generates appropriate gradiant color based off of the colors
+local function GetGradient(frame, unit, lowR, lowG, lowB, midR, midG, midB, hiR, hiG, hiB)
+	local colors = E.db.unitframe.colors
+	local r, g, b = hiR, hiG, hiB
+	if colors.colorhealthbyvalue and not UnitIsTapDenied(unit) then
+		if midR and lowR then
+			r, g, b =  ElvUF:ColorGradient(frame.cur, frame.max, lowR, lowG, lowB, midR, midG, midB, hiR, hiG, hiB)
+		end
+	end
+	return r, g, b
+end
+
+--Resets the health color with default ElvUI colors
+--Copied UF:PostUpdateHealthColor from ElvUI but made coloring requirement is more lax
+local function resetHealthBarColor(frame, unit)
+	local parent = frame:GetParent()
 	local colors = E.db.unitframe.colors
 	local r, g, b = colors.health.r, colors.health.g, colors.health.b
-
-	-- Reset health brackdrop color
-	if E.db["BH"].colorBackdrop then
-		local m = frame.bg.multiplier
-		frame.bg:SetVertexColor(r * m, g * m, b * m)
+	local newr, newg, newb = r, g, b
+	local classr, classg, classb = nil, nil, nil
+	
+	-- Get class colors
+	if colors.healthclass then
+		local reaction, color = (UnitReaction(unit, 'player'))
+		if UnitIsPlayer(unit) then
+			local _, Class = UnitClass(unit)
+			color = parent.colors.class[Class]
+		elseif reaction then
+			color = parent.colors.reaction[reaction]
+		end
+		classr, classg, classb = color[1], color[2], color[3]
+		if classr then
+			r, g, b = classr, classg, classb
+		end
 	end
-	-- Reset health color
-	frame:SetStatusBarColor(r, g, b, 1.0)
+	
+	newr, newg, newb = GetGradient(frame, unit, 1, 0, 0, 1, 1, 0, r, g, b)
+	
+	--Set frame color
+	frame:SetStatusBarColor(newr, newg, newb, 1.0)
+	
+	-- Charmed player should have hostile color
+	if unit and (strmatch(unit, "raid%d+") or strmatch(unit, "party%d+")) then
+		if not UnitIsDeadOrGhost(unit) and UnitIsConnected(unit) and UnitIsCharmed(unit) and UnitIsEnemy("player", unit) then
+			local color = parent.colors.reaction[HOSTILE_REACTION]
+			if color then self:SetStatusBarColor(color[1], color[2], color[3]) end
+		end
+	end
+
+	-- Set
+	if frame.bg then
+		frame.bg.multiplier = (colors.healthMultiplier > 0 and colors.healthMultiplier) or 0.35
+
+		if colors.useDeadBackdrop and UnitIsDeadOrGhost(unit) then
+			frame.bg:SetVertexColor(colors.health_backdrop_dead.r, colors.health_backdrop_dead.g, colors.health_backdrop_dead.b)
+		elseif colors.customhealthbackdrop then
+			frame.bg:SetVertexColor(colors.health_backdrop.r, colors.health_backdrop.g, colors.health_backdrop.b)
+		elseif colors.classbackdrop then
+			if classr then
+				frame.bg:SetVertexColor(classr * frame.bg.multiplier, classg * frame.bg.multiplier, classb * frame.bg.multiplier)
+			end
+		elseif newb then
+			frame.bg:SetVertexColor(newr * frame.bg.multiplier, newg * frame.bg.multiplier, newb * frame.bg.multiplier)
+		else
+			frame.bg:SetVertexColor(r * frame.bg.multiplier, g * frame.bg.multiplier, b * frame.bg.multiplier)
+		end
+	end
 end
 
 -- Update the health color for the frame 
 -- and the buff specified.
-local function updateHealth(frame, spellID)
+local function updateHealth(frame, unit, spellID)
 	if not E.db["BH"].spells[spellID] then return end
 
 	if frame.BuffHighlightActive then
 		-- Get highlight color for the spell
 		local t = E.db["BH"].spells[spellID].glowColor
-		local r, g, b, a = t.r, t.g, t.b, t.a
+		local t2 = E.db["BH"].spells[spellID].glowColorTwo
+		local t3 = E.db["BH"].spells[spellID].glowColorThree
 		
+		local r, g, b =  GetGradient(frame, unit, t3.r, t3.g, t3.b, t2.r, t2.g, t2.b, t.r, t.g, t.b)
 		-- Highlight the health backdrop if enabled
 		if E.db["BH"].colorBackdrop then
 			local m = frame.bg.multiplier
 			frame.bg:SetVertexColor(r * m, g * m, b * m)
 		end
 		-- Update the health color
-		frame:SetStatusBarColor(r, g, b, a)
-	elseif frame.BuffHighlightFaderActive then
-		-- Get fade color for the spell
-		local t = E.db["BH"].spells[spellID].fadeColor
-		local r, g, b, a = t.r, t.g, t.b, t.a
-
-		-- Highlight the health backdrop if enabled
-		if E.db["BH"].colorBackdrop then 
-			local m = frame.bg.multiplier
-			frame.bg:SetVertexColor(r * m, g * m, b * m)
-		end
-		-- Update the health color
-		frame:SetStatusBarColor(r, g, b, a)
+		frame:SetStatusBarColor(r, g, b, t.a)
 	end
 end
 
 -- Update the frame. Check if a buff is applied
--- or if the fade effect should be displayed
 -- for this frame. Clears any buff highlight 
 -- if an aura is already highlighted by ElvUI
 -- to avoid conflicts.
@@ -107,7 +164,7 @@ local function updateFrame(frame, unit)
 		frame.BuffHighlightActive = false
 		frame.BuffHighlightFaderActive = false
 		
-		resetHealthBarColor(frame)
+		resetHealthBarColor(frame, unit)
 		return 
 	end
 
@@ -118,39 +175,21 @@ local function updateFrame(frame, unit)
 		frame.BuffHighlightActive = false
 		frame.BuffHighlightFaderActive = false
 
-		resetHealthBarColor(frame)
+		resetHealthBarColor(frame, unit)
 		return
 	end
 
 	-- Enable the buff highlight or fade effect for this frame
 	if not E.db["BH"].spells[spellID] then return end
-	if (buffDuration > E.db["BH"].spells[spellID].fadeThreshold) or not E.db["BH"].spells[spellID].fadeEnabled then
-		frame.BuffHighlightActive = true
-		frame.BuffHighlightFaderActive = false
-	else
-		frame.BuffHighlightActive = false
-		frame.BuffHighlightFaderActive = true
-	end
+	frame.BuffHighlightActive = true
+	frame.BuffHighlightFaderActive = false
 
 	-- Update the health color
-	updateHealth(frame, spellID)
+	updateHealth(frame, unit, spellID)
 end
-
---  Check wether class colors unitframes are
---  enabled or not. If yes, then do not enable the plugin
-local function usingClassColor()
-	local val = E.db.unitframe.colors.healthclass
-	if val ~= nil then
-		return val
-	end
-end
-
 
 -- Update function. Cycles through all unitframes
 -- in party, raid and raid 40 groups. 
--- Roughly called every 0.1s
--- For better performances, it should be called on
--- the event "AURA_APPLIED". But the fading effect won't work
 local function Update()
 	for _, name in pairs(headers) do
 		local header = UF.headers[name]
@@ -166,31 +205,26 @@ local function Update()
 	end
 end
 
-local timeSinceLastUpdate = 0
-
--- Called on every frame... not really efficient
--- but I have not found a better solution to make
--- the fade effect work
-local function BH_OnUpdate(self, elapsed)
-	timeSinceLastUpdate = timeSinceLastUpdate + elapsed; 	
-	updateInterval = E.db["BH"].refreshRate
-	while (timeSinceLastUpdate > updateInterval) do
-		Update()
-		timeSinceLastUpdate = timeSinceLastUpdate - updateInterval;
-	end
+function BH_EventHandler(self, event, ...)
+	Update()
 end
 
--- Called at the start of the plugin
+-- Disables the plugin
+-- To unhook the UF function PostUpdateColor, the UI needs to reload.
+function BH:disablePlugin()
+	f:SetScript("OnEvent", nil)
+	E:StaticPopup_Show('CONFIG_RL')
+end
+
+-- Enables the plugin
 -- Hooks the PostUpdateColor of every frame
 -- we're tracking. Avoids the flickering effect when 
 -- ElvUI updates a frame that we did not update ourselves
-function BH:Initialize()
+function BH:enablePlugin()
+	f:SetScript("OnEvent", BH_EventHandler)
+	
 	if not E.private.unitframe.enable then 
 		return 
-	end
-	if  usingClassColor() then
-		print("|cff1784d1ElvUI|r |cff00b3ffBuffHighlight|r: You are currently using class heath colors. Please disable this option in order to BuffHilight to work. (UnitFrames > General Options > Colors > Class Health)")
-		return
 	end
 
 	for _, name in pairs(headers) do
@@ -209,19 +243,12 @@ function BH:Initialize()
 			end
 		end
 	end
+end
 
+-- Called at the start of the plugin
+function BH:Initialize()
+	if E.db["BH"].enable then
+		BH:enablePlugin()
+	end
 	EP:RegisterPlugin(addon, BH.GetOptions) 
 end
-
-local f = CreateFrame("Frame")
-
-function BH:disablePlugin()
-	f:SetScript("OnUpdate", nil)
-end
-
-function BH:enablePlugin()
-	f:SetScript("OnUpdate", BH_OnUpdate)
-end
-
-BH:enablePlugin()
-E:RegisterModule(BH:GetName())

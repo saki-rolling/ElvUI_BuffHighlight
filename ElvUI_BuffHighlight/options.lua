@@ -1,9 +1,11 @@
 local E, L, V, P, G = unpack(ElvUI);
-local BH = E:GetModule('BuffHighlight');
-local UF = E:GetModule('UnitFrames');
+local BH = E:GetModule('BuffHighlight')
+local UF = E:GetModule('UnitFrames')
 local addon = ...
 
 local selectedSpell, quickSearchText, spellList = nil, '', {}
+
+local colorDescription = "Color(High Health) is used when UnitFrames>General>Colors>Health By Value is unchecked. Otherwise, Color(High Health), Color(Medium Health), and Color(Low Health) are used together to make a gradient."
 
 local function GetSelectedSpell()
 	if selectedSpell and selectedSpell ~= '' then
@@ -56,21 +58,6 @@ function BH:GetOptions()
 							E.db["BH"].colorBackdrop = value
 						end,
 					},
-					refreshRate = {
-						order = 3,
-						type = "range",
-						name = "Refresh rate",
-						desc = "Fade check refresh rate",
-						min = 0.05,
-						max = 1,
-						step = 0.05,
-						get = function(info)
-							return E.db["BH"].refreshRate
-						end,
-						set = function(info, value)
-							E.db["BH"].refreshRate = value
-						end,
-					},
 				},
 			},
 			selectGroup = {
@@ -95,10 +82,9 @@ function BH:GetOptions()
 							
 							E.db["BH"].spells[value] = {
 								["enabled"] = true,
-								["fadeEnabled"] = true,
-								["fadeThreshold"] = 5,
 								["glowColor"] = {r = 0.1, g = 0.6, b = 0.3, a = 1.0},
-								["fadeColor"] = {r = 0.0, g = 0.4, b = 0.1, a = 1.0},
+								["glowColorTwo"] = {r = 0.1, g = 0.6, b = 0.3, a = 1.0},
+								["glowColorThree"] = {r = 0.1, g = 0.6, b = 0.3, a = 1.0},
 							}
 						end,
 					},
@@ -198,7 +184,8 @@ function BH:GetOptions()
 							glowColor = {
 								order = 1,
 								type = "color",
-								name = "Highlight Color",
+								name = "Color (High Health)",
+								desc = colorDescription,
 								hasAlpha = true,
 								get = function(info)
 									local spell = GetSelectedSpell()
@@ -215,66 +202,43 @@ function BH:GetOptions()
 									end
 								end,
 							},
-						},
-					},
-					fadeSpellOptions = {
-						order = 1,
-						type = "group",
-						name = 'Fade options',
-						guiInline = true,
-						args = {
-							fadeEnabled = {
-								name = "Fade enable",
-								desc = "|cFFFF0000 May be heavy on CPU !",
-								order = 15,
-								type = 'toggle',
-								get = function(info)
-									local spell = GetSelectedSpell()
-									if not spell then return end
-			
-									return E.db["BH"].spells[spell].fadeEnabled
-								end,
-								set = function(info, value)
-									local spell = GetSelectedSpell()
-									if not spell then return end
-			
-									E.db["BH"].spells[spell].fadeEnabled = value
-								end,
-							},
-							fadeThreshold = {
-								order = 16,
-								type = "range",
-								name = "Fading Threshold",
-								desc = "Time remaining at which the buff will fade",
-								min = 1,
-								max = 30,
-								step = 1,
-								get = function(info)
-									local spell = GetSelectedSpell()
-									if not spell then return end
-									return E.db["BH"].spells[spell].fadeThreshold
-								end,
-								set = function(info, value)
-									local spell = GetSelectedSpell()
-									if not spell then return end
-									E.db["BH"].spells[spell].fadeThreshold = value
-								end,
-							},
-							fadeColor = {
-								order = 4,
+							glowColorTwo = {
+								order = 2,
 								type = "color",
-								name = "Fade Color",
+								name = "Color (Medium Health)",
+								desc = colorDescription,
 								hasAlpha = true,
 								get = function(info)
 									local spell = GetSelectedSpell()
-									local t = E.db["BH"].spells[spell].fadeColor
+									local t = E.db["BH"].spells[spell].glowColorTwo
 									if t then
 										return t.r, t.g, t.b, t.a
 									end
 								end,
 								set = function(info, r, g, b, a)
 									local spell = GetSelectedSpell()
-									local t = E.db["BH"].spells[spell].fadeColor
+									local t = E.db["BH"].spells[spell].glowColorTwo
+									if t then
+										t.r, t.g, t.b, t.a = r, g, b, a
+									end
+								end,
+							},
+							glowColorThree = {
+								order = 3,
+								type = "color",
+								name = "Color (Low Health)",
+								desc = colorDescription,
+								hasAlpha = true,
+								get = function(info)
+									local spell = GetSelectedSpell()
+									local t = E.db["BH"].spells[spell].glowColorThree
+									if t then
+										return t.r, t.g, t.b, t.a
+									end
+								end,
+								set = function(info, r, g, b, a)
+									local spell = GetSelectedSpell()
+									local t = E.db["BH"].spells[spell].glowColorThree
 									if t then
 										t.r, t.g, t.b, t.a = r, g, b, a
 									end
