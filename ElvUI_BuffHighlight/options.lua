@@ -58,6 +58,17 @@ function BH:GetOptions()
 							E.db["BH"].colorBackdrop = value
 						end,
 					},
+					useRaid40 = {
+						order = 3,
+						type = "toggle",
+						name = "Use Raid40",
+						get = function(info)
+							return E.db["BH"].useRaid40
+						end,
+						set = function(info, value)
+							E.db["BH"].useRaid40 = value
+						end,
+					},
 				},
 			},
 			selectGroup = {

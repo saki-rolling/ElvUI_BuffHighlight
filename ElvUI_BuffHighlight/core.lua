@@ -22,13 +22,6 @@ E:RegisterModule(BH:GetName())
 --GLOBALS: hooksecurefunc
 local select, pairs, unpack = select, pairs, unpack
 
--- Highlighted group frames
-headers = {
-	"party", 
-	"raid", 
-	"raid40"
-}
-
 -- Checks wether the specified spell
 -- is tracked by the user
 local function isTracked(spellID)
@@ -45,7 +38,7 @@ local function CheckBuff(unit)
 	if not unit or not UnitCanAssist("player", unit) then return nil end
 	local i = 1
 	while true do
-		local _, texture,_,_,_, expire, source,_,_, spellID = UnitAura(unit, i, "HELPFUL")
+		local _, texture,_,_,_, expire, source,_,_, spellID = UnitBuff(unit, i, "HELPFUL|PLAYER")
 		if not texture then break end
 
 		if(source == "player" and isTracked(spellID)) then
@@ -63,13 +56,35 @@ local function AuraHighlighted(frame)
 	return r ~= 0 or g ~= 0 or b ~= 0
 end
 
---Generates appropriate gradiant color based off of the colors
+-- Generates color gradient based off of 3 color points
+local function ColorGradient(a, b, lowR, lowG, lowB, midR, midG, midB, hiR, hiG, hiB)
+	local perc = a/b
+	
+	--Get corner cases out of the way
+	if perc >= 1 then
+		return hiR, hiG, hiB
+	elseif  perc == 0.5 then
+		return midR, midG, midB
+	elseif perc == 0 then
+		return lowR, lowG, lowB
+	end
+
+	--percent health * number of colors (scale up the percent to be distributed among 3 colors)
+	local colorInd, colorPerc = math.modf((a/b) * 2)
+	if perc < 0.5 then
+		return lowR + (midR-lowR)*colorPerc, lowG + (midG-lowG)*colorPerc, lowB + (midB-lowB)*colorPerc
+	else
+		return midR + (hiR-midR)*colorPerc, midG + (hiG-midG)*colorPerc, midB + (hiB-midB)*colorPerc
+	end
+end
+
+-- Gets appropriate gradient color for frame
 local function GetGradient(frame, unit, lowR, lowG, lowB, midR, midG, midB, hiR, hiG, hiB)
 	local colors = E.db.unitframe.colors
 	local r, g, b = hiR, hiG, hiB
 	if colors.colorhealthbyvalue and not UnitIsTapDenied(unit) then
 		if midR and lowR then
-			r, g, b =  ElvUF:ColorGradient(frame.cur, frame.max, lowR, lowG, lowB, midR, midG, midB, hiR, hiG, hiB)
+			r, g, b =  ColorGradient(frame.cur, frame.max, lowR, lowG, lowB, midR, midG, midB, hiR, hiG, hiB)
 		end
 	end
 	return r, g, b
@@ -144,6 +159,7 @@ local function updateHealth(frame, unit, spellID)
 		local t3 = E.db["BH"].spells[spellID].glowColorThree
 		
 		local r, g, b =  GetGradient(frame, unit, t3.r, t3.g, t3.b, t2.r, t2.g, t2.b, t.r, t.g, t.b)
+		
 		-- Highlight the health backdrop if enabled
 		if E.db["BH"].colorBackdrop then
 			local m = frame.bg.multiplier
@@ -188,25 +204,49 @@ local function updateFrame(frame, unit)
 	updateHealth(frame, unit, spellID)
 end
 
+-- Returns a table with the type of unit frames active
+-- Toggle whether or not to use raid40 from UI
+-- *Need to refactor this to query actual ElvUI variables
+local function GetActiveFrames()
+	local _headers = {}
+	members = GetNumGroupMembers()
+	if members <= 5 then
+		table.insert(_headers, "party")
+	elseif members < 26 then
+		table.insert(_headers, "raid")
+	elseif E.db["BH"].UseRaid40 then
+		table.insert(_headers, "raid40")
+	else
+		table.insert(_headers, "raid")
+	end
+	return _headers
+end
+
 -- Update function. Cycles through all unitframes
 -- in party, raid and raid 40 groups. 
-local function Update()
-	for _, name in pairs(headers) do
+function BH_EventHandler(self, event, ...)
+	local unit = ...
+	
+	if not unit or not UnitCanAssist("player", unit) then
+		return
+	end
+	
+	local _headers = GetActiveFrames()
+	
+	for _, name in pairs(_headers) do
 		local header = UF.headers[name]
 		for i = 1, header:GetNumChildren() do
 			local group = select(i, header:GetChildren())
 			for j = 1, group:GetNumChildren() do
 				local frame = select(j, group:GetChildren())
 				if frame and frame.Health and frame.unit then
-					updateFrame(frame.Health, frame.unit)
+					if unit == frame.unit then
+						updateFrame(frame.Health, frame.unit)
+					end
 				end
 			end
 		end
 	end
-end
-
-function BH_EventHandler(self, event, ...)
-	Update()
 end
 
 -- Disables the plugin
@@ -227,7 +267,9 @@ function BH:enablePlugin()
 		return 
 	end
 
-	for _, name in pairs(headers) do
+	local _headers = GetActiveFrames()
+	
+	for _, name in pairs(_headers) do
 		local header = UF.headers[name]
 		for i = 1, header:GetNumChildren() do
 			local group = select(i, header:GetChildren())
