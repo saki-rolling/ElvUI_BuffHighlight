@@ -19,6 +19,12 @@ local f = CreateFrame("Frame")
 f:RegisterEvent("UNIT_AURA")
 E:RegisterModule(BH:GetName())
 
+headers = {
+	["party"] = false, 
+	["raid"] = false,
+	["raid40"] = false
+}
+
 --GLOBALS: hooksecurefunc
 local select, pairs, unpack = select, pairs, unpack
 
@@ -82,7 +88,7 @@ end
 local function GetGradient(frame, unit, lowR, lowG, lowB, midR, midG, midB, hiR, hiG, hiB)
 	local colors = E.db.unitframe.colors
 	local r, g, b = hiR, hiG, hiB
-	if colors.colorhealthbyvalue and not UnitIsTapDenied(unit) then
+	if colors.colorhealthbyvalue then
 		if midR and lowR then
 			r, g, b =  ColorGradient(frame.cur, frame.max, lowR, lowG, lowB, midR, midG, midB, hiR, hiG, hiB)
 		end
@@ -127,7 +133,7 @@ local function resetHealthBarColor(frame, unit)
 		end
 	end
 
-	-- Set
+	-- Set background color
 	if frame.bg then
 		frame.bg.multiplier = (colors.healthMultiplier > 0 and colors.healthMultiplier) or 0.35
 
@@ -210,14 +216,16 @@ end
 local function GetActiveFrames()
 	local _headers = {}
 	members = GetNumGroupMembers()
-	if members <= 5 then
+	
+	if members <= 5 and E.db.BH.trackedHeaders.party then
 		table.insert(_headers, "party")
-	elseif members < 26 then
-		table.insert(_headers, "raid")
-	elseif E.db["BH"].UseRaid40 then
-		table.insert(_headers, "raid40")
-	else
-		table.insert(_headers, "raid")
+	else 
+		if E.db.BH.trackedHeaders.raid then
+			table.insert(_headers, "raid")
+		end
+		if E.db.BH.trackedHeaders.raid40 then
+			table.insert(_headers, "raid40")
+		end
 	end
 	return _headers
 end
@@ -231,19 +239,49 @@ function BH_EventHandler(self, event, ...)
 		return
 	end
 	
-	local _headers = GetActiveFrames()
+	-- See if we need to hook the postUpdateColor function because
+	-- the frames were not available for hookup previously
+	local postColorUpdateHooked = true
+	for name, enabled in pairs(E.db.BH.trackedHeaders) do
+		if enabled then
+			postColorUpdateHooked = postColorUpdateHooked and headers[name] == true
+		end
+	end
+	if not postColorUpdateHooked then
+		BH:enablePlugin()
+	end
 	
-	for _, name in pairs(_headers) do
-		local header = UF.headers[name]
-		for i = 1, header:GetNumChildren() do
-			local group = select(i, header:GetChildren())
-			for j = 1, group:GetNumChildren() do
-				local frame = select(j, group:GetChildren())
-				if frame and frame.Health and frame.unit then
-					if unit == frame.unit then
-						updateFrame(frame.Health, frame.unit)
+	-- Get the active frames only and call the update function
+	-- Prevents raid frames from being iterated over in M+
+	local _headers = GetActiveFrames()
+	for name, enabled in pairs(E.db.BH.trackedHeaders) do
+		if enabled then
+			local header = UF.headers[name]
+			if header ~= nil then
+				for i = 1, header:GetNumChildren() do
+					local group = select(i, header:GetChildren())
+					for j = 1, group:GetNumChildren() do
+						local frame = select(j, group:GetChildren())
+						if frame and frame.Health and frame.unit then
+							if unit == frame.unit then
+								updateFrame(frame.Health, frame.unit)
+							end
+						end
 					end
 				end
+			end
+		end
+	end
+end
+
+function BH:resetHeader(name)
+	local header = UF.headers[name]
+	for i = 1, header:GetNumChildren() do
+		local group = select(i, header:GetChildren())
+		for j = 1, group:GetNumChildren() do
+			local frame = select(j, group:GetChildren())
+			if frame and frame.unit and frame.Health then
+				resetHealthBarColor(frame.Health)
 			end
 		end
 	end
@@ -266,22 +304,28 @@ function BH:enablePlugin()
 	if not E.private.unitframe.enable then 
 		return 
 	end
-
-	local _headers = GetActiveFrames()
 	
-	for _, name in pairs(_headers) do
-		local header = UF.headers[name]
-		for i = 1, header:GetNumChildren() do
-			local group = select(i, header:GetChildren())
-			for j = 1, group:GetNumChildren() do
-				local frame = select(j, group:GetChildren())
-				if frame and frame.Health and frame.unit then
-					hooksecurefunc(
-						frame.Health, 
-						"PostUpdateColor", 
-						function(self, unit, ...) updateFrame(self, unit) end
-					)
+	for name, enabled in pairs(E.db.BH.trackedHeaders) do
+		if enabled then
+			local header = UF.headers[name]
+			if header ~= nil then
+				if headers[name] == false then
+					for i = 1, header:GetNumChildren() do
+						local group = select(i, header:GetChildren())
+						for j = 1, group:GetNumChildren() do
+							local frame = select(j, group:GetChildren())
+							if frame and frame.Health and frame.unit then
+								hooksecurefunc(
+									frame.Health, 
+									"PostUpdateColor", 
+									function(self, unit, ...) updateFrame(self, unit) end)
+							end
+						end
+					end
 				end
+				headers[name] = true
+			else
+				headers[name] = false
 			end
 		end
 	end
@@ -289,8 +333,10 @@ end
 
 -- Called at the start of the plugin
 function BH:Initialize()
+	EP:RegisterPlugin(addon, BH.GetOptions) 
 	if E.db["BH"].enable then
+		-- As of ElvUI V20.22, UF.headers are not available at the time this plugin 
+		-- is enabled so this fails
 		BH:enablePlugin()
 	end
-	EP:RegisterPlugin(addon, BH.GetOptions) 
 end

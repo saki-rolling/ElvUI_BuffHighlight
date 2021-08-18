@@ -57,16 +57,55 @@ function BH:GetOptions()
 						set = function(info, value)
 							E.db["BH"].colorBackdrop = value
 						end,
-					},
-					useRaid40 = {
-						order = 3,
+					}
+				},
+			},
+			framesOptions = {
+				order = 3,
+				type = "group",
+				name = "Frames Options",
+				guiInline = true,
+				args = {
+					party = {
+						order = 1,
 						type = "toggle",
-						name = "Use Raid40",
+						name = "Party",
+						desc = "Enable/Disable the buff highlight for the party frame",
+						width = "half",
 						get = function(info)
-							return E.db["BH"].useRaid40
+							return E.db.BH.trackedHeaders.party
 						end,
 						set = function(info, value)
-							E.db["BH"].useRaid40 = value
+							E.db.BH.trackedHeaders.party = value
+							if not value then BH:resetHeader("party") end
+						end,
+					},
+					raid = {
+						order = 2,
+						type = "toggle",
+						name = "Raid",
+						desc = "Enable/Disable the buff highlight for the raid frame",
+						width = "half",
+						get = function(info)
+							return E.db.BH.trackedHeaders.raid
+						end,
+						set = function(info, value)
+							E.db.BH.trackedHeaders.raid = value
+							if not value then BH:resetHeader("raid") end
+						end,
+					},
+					raid40 = {
+						order = 3,
+						type = "toggle",
+						name = "Raid40",
+						desc = "Enable/Disable the buff highlight for the raid40 frame",
+						width = "half",
+						get = function(info)
+							return E.db.BH.trackedHeaders.raid40
+						end,
+						set = function(info, value)
+							E.db.BH.trackedHeaders.raid40 = value
+							if not value then BH:resetHeader("raid40") end
 						end,
 					},
 				},
