@@ -1,5 +1,5 @@
 local E, L, V, P, G = unpack(ElvUI); 
-local BH = E:NewModule('BuffHighlight', 'AceHook-3.0'); 
+local BH = E:NewModule('SHighlight', 'AceHook-3.0'); 
 local EP = LibStub("LibElvUIPlugin-1.0") 
 local UF = E:GetModule('UnitFrames')
 local addon, ns = ...
@@ -28,7 +28,7 @@ headers = {
 --GLOBALS: hooksecurefunc
 local select, pairs, unpack = select, pairs, unpack
 
--- Checks wether the specified spell
+-- Checks whether the specified spell
 -- is tracked by the user
 local function isTracked(spellID)
 	for id, spell in pairs(E.db["BH"].spells) do
@@ -41,7 +41,8 @@ end
 
 -- Check if a tracked buff is currently on the unit
 local function CheckBuff(unit)
-	if not unit or not UnitCanAssist("player", unit) then return nil end
+	-- ignoring safety check because we only call this on party/raid units anyway
+	-- if not unit or not UnitCanAssist("player", unit) then return nil end
 	local i = 1
 	while true do
 		local _, texture,_,_,_, expire, source,_,_, spellID = UnitBuff(unit, i, "HELPFUL|PLAYER")
@@ -54,7 +55,7 @@ local function CheckBuff(unit)
 	end
 end
 
--- Check wether ElvUI is already highlighting an aura
+-- Check whether ElvUI is already highlighting an aura
 local function AuraHighlighted(frame)
 	if (not frame.AuraHighlight) then return false end
 	
@@ -101,7 +102,7 @@ end
 local function resetHealthBarColor(frame, unit)
 	local parent = frame:GetParent()
 	local colors = E.db.unitframe.colors
-	local r, g, b = colors.health.r, colors.health.g, colors.health.b
+	local r, g, b, a = colors.health.r, colors.health.g, colors.health.b, colors.health.a
 	local newr, newg, newb = r, g, b
 	local classr, classg, classb = nil, nil, nil
 	
@@ -123,7 +124,7 @@ local function resetHealthBarColor(frame, unit)
 	newr, newg, newb = GetGradient(frame, unit, 1, 0, 0, 1, 1, 0, r, g, b)
 	
 	--Set frame color
-	frame:SetStatusBarColor(newr, newg, newb, 1.0)
+	frame:SetStatusBarColor(newr, newg, newb)
 	
 	-- Charmed player should have hostile color
 	if unit and (strmatch(unit, "raid%d+") or strmatch(unit, "party%d+")) then
@@ -172,7 +173,7 @@ local function updateHealth(frame, unit, spellID)
 			frame.bg:SetVertexColor(r * m, g * m, b * m)
 		end
 		-- Update the health color
-		frame:SetStatusBarColor(r, g, b, t.a)
+		frame:SetStatusBarColor(r, g, b)
 	end
 end
 
@@ -239,18 +240,6 @@ function BH_EventHandler(self, event, ...)
 		return
 	end
 	
-	-- See if we need to hook the postUpdateColor function because
-	-- the frames were not available for hookup previously
-	local postColorUpdateHooked = true
-	for name, enabled in pairs(E.db.BH.trackedHeaders) do
-		if enabled then
-			postColorUpdateHooked = postColorUpdateHooked and headers[name] == true
-		end
-	end
-	if not postColorUpdateHooked then
-		BH:enablePlugin()
-	end
-	
 	-- Get the active frames only and call the update function
 	-- Prevents raid frames from being iterated over in M+
 	local _headers = GetActiveFrames()
@@ -274,6 +263,7 @@ function BH_EventHandler(self, event, ...)
 	end
 end
 
+-- Resets a group's (party, raid) health bar color
 function BH:resetHeader(name)
 	local header = UF.headers[name]
 	for i = 1, header:GetNumChildren() do
@@ -294,32 +284,21 @@ function BH:disablePlugin()
 	E:StaticPopup_Show('CONFIG_RL')
 end
 
--- Enables the plugin
--- Hooks the PostUpdateColor of every frame
--- we're tracking. Avoids the flickering effect when 
--- ElvUI updates a frame that we did not update ourselves
-function BH:enablePlugin()
-	f:SetScript("OnEvent", BH_EventHandler)
-	
-	if not E.private.unitframe.enable then 
-		return 
-	end
-	
+-- Hooks unit frames' PostUpdateColor to plugin functionality 
+local function hookToUnitFrames()	
 	for name, enabled in pairs(E.db.BH.trackedHeaders) do
 		if enabled then
 			local header = UF.headers[name]
-			if header ~= nil then
-				if headers[name] == false then
-					for i = 1, header:GetNumChildren() do
-						local group = select(i, header:GetChildren())
-						for j = 1, group:GetNumChildren() do
-							local frame = select(j, group:GetChildren())
-							if frame and frame.Health and frame.unit then
-								hooksecurefunc(
-									frame.Health, 
-									"PostUpdateColor", 
-									function(self, unit, ...) updateFrame(self, unit) end)
-							end
+			if header ~= nil and headers[name] == false then
+				for i = 1, header:GetNumChildren() do
+					local group = select(i, header:GetChildren())
+					for j = 1, group:GetNumChildren() do
+						local frame = select(j, group:GetChildren())
+						if frame and frame.Health and frame.unit then
+							hooksecurefunc(
+								frame.Health, 
+								"PostUpdateColor", 
+								function(self, unit, ...) updateFrame(self, unit) end)
 						end
 					end
 				end
@@ -329,14 +308,29 @@ function BH:enablePlugin()
 			end
 		end
 	end
+end 
+
+-- Enables the plugin
+-- Hooks the PostUpdateColor of every frame
+-- we're tracking. Avoids the flickering effect when 
+-- ElvUI updates a frame that we did not update ourselves
+function BH:enablePlugin()
+	if not E.private.unitframe.enable then 
+		return 
+	end
+	
+	f:SetScript("OnEvent", BH_EventHandler)
+	
+	if not UF.player then
+		E:Delay(1, hookToUnitFrames)
+		return
+	end
 end
 
 -- Called at the start of the plugin
 function BH:Initialize()
 	EP:RegisterPlugin(addon, BH.GetOptions) 
 	if E.db["BH"].enable then
-		-- As of ElvUI V20.22, UF.headers are not available at the time this plugin 
-		-- is enabled so this fails
 		BH:enablePlugin()
 	end
 end

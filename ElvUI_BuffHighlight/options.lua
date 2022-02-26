@@ -1,5 +1,5 @@
 local E, L, V, P, G = unpack(ElvUI);
-local BH = E:GetModule('BuffHighlight')
+local BH = E:GetModule('SHighlight')
 local UF = E:GetModule('UnitFrames')
 local addon = ...
 
@@ -20,12 +20,12 @@ function BH:GetOptions()
 	E.Options.args.BH = {
 		order = 100,
 		type = "group",
-		name = "|cff00b3ffBuffHighlight|r",
+		name = "|cff00b3ffSHighlight|r",
 		args = {
 			title = {
 				order = 1,
 				type = "header",
-				name = "Buff Highlight",
+				name = "Highlight",
 			},
 			addonOptions = {
 				order = 2,
