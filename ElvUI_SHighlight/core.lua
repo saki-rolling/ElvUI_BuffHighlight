@@ -19,22 +19,31 @@ local f = CreateFrame("Frame")
 f:RegisterEvent("UNIT_AURA")
 E:RegisterModule(BH:GetName())
 
---GLOBALS: hooksecurefunc
+--- GLOBALS
 local select, pairs, unpack = select, pairs, unpack
 
 local playerClass = UnitClass("player")
 
 headers = {
 	["party"] = false, 
-	["raid"] = false,
-	["raid40"] = false
+	["raid1"] = false,
+	["raid2"] = false,
+	["raid3"] = false,
 }
 
+--- HELPER functions
+function print_r(arr)
+    for key, val in pairs(arr) do
+	  print("key: ", key, "val: ", val)
+	end
+end
+
+--- MAIN functions
 
 -- Check if a buff is currently on the unit
 local function CheckBuff(unit)
-	for id, spell in pairs(E.db["BH"].spells) do
-		if(spell.class == playerClass) then			
+	for id, spell in pairs(E.db.BH.spells) do
+		if(spell.class == "" or spell.class == playerClass) then
 			local auradata = C_UnitAuras.GetAuraDataBySpellName(unit, spell.name, "HELPFUL|PLAYER")
 			if auradata == nil then
 				return nil
@@ -147,21 +156,20 @@ local function resetHealthBarColor(frame, unit)
 	end
 end
 
--- Update the health color for the frame 
--- and the buff specified.
+-- Update the health color for the frame and the buff specified.
 local function updateHealth(frame, unit, spellID)
-	if not E.db["BH"].spells[spellID] then return end
+	if not E.db.BH.spells[spellID] then return end
 
 	if frame.BuffHighlightActive then
 		-- Get highlight color for the spell
-		local t = E.db["BH"].spells[spellID].glowColor
-		local t2 = E.db["BH"].spells[spellID].glowColorTwo
-		local t3 = E.db["BH"].spells[spellID].glowColorThree
+		local t = E.db.BH.spells[spellID].glowColor
+		local t2 = E.db.BH.spells[spellID].glowColorTwo
+		local t3 = E.db.BH.spells[spellID].glowColorThree
 		
 		local r, g, b =  GetGradient(frame, unit, t3.r, t3.g, t3.b, t2.r, t2.g, t2.b, t.r, t.g, t.b)
 		
 		-- Highlight the health backdrop if enabled
-		if E.db["BH"].colorBackdrop then
+		if E.db.BH.colorBackdrop then
 			local m = frame.bg.multiplier
 			frame.bg:SetVertexColor(r * m, g * m, b * m)
 		end
@@ -196,7 +204,7 @@ local function updateFrame(frame, unit)
 	end
 
 	-- Enable the buff highlight or fade effect for this frame
-	if not E.db["BH"].spells[spellID] then return end
+	if not E.db.BH.spells[spellID] then return end
 	frame.BuffHighlightActive = true
 	frame.BuffHighlightFaderActive = false
 
@@ -205,28 +213,37 @@ local function updateFrame(frame, unit)
 end
 
 -- Returns a table with the type of unit frames active
--- Toggle whether or not to use raid40 from UI
--- *Need to refactor this to query actual ElvUI variables
 local function GetActiveFrames()
 	local _headers = {}
 	members = GetNumGroupMembers()
 	
-	if members <= 5 and E.db.BH.trackedHeaders.party then
+	local skipRaid = E.db.BH.trackedHeaders.limitOn5 and members <= 5
+	
+	if E.db.BH.trackedHeaders.party then
 		table.insert(_headers, "party")
-	else 
-		if E.db.BH.trackedHeaders.raid then
-			table.insert(_headers, "raid")
-		end
-		if E.db.BH.trackedHeaders.raid40 then
-			table.insert(_headers, "raid40")
-		end
 	end
+	
+	if skipRaid then
+		return _headers
+	end
+	
+	if E.db.BH.trackedHeaders.raid1 then
+		table.insert(_headers, "raid1")
+	end
+	if E.db.BH.trackedHeaders.raid2 then
+		table.insert(_headers, "raid2")
+	end
+	if E.db.BH.trackedHeaders.raid3 then
+		table.insert(_headers, "raid3")
+	end
+
 	return _headers
 end
 
 -- Update function. Cycles through all unitframes
 -- in party, raid and raid 40 groups. 
 function BH_EventHandler(self, event, ...)
+	-- only trigger on UNIT_AURA events
 	if (event ~= "UNIT_AURA") then 
 		return
 	end
@@ -240,18 +257,17 @@ function BH_EventHandler(self, event, ...)
 	-- Get the active frames only and call the update function
 	-- Prevents raid frames from being iterated over in M+
 	local _headers = GetActiveFrames()
-	for name, enabled in pairs(E.db.BH.trackedHeaders) do
-		if enabled then
-			local header = UF.headers[name]
-			if header ~= nil then
-				for i = 1, header:GetNumChildren() do
-					local group = select(i, header:GetChildren())
-					for j = 1, group:GetNumChildren() do
-						local frame = select(j, group:GetChildren())
-						if frame and frame.Health and frame.unit then
-							if unit == frame.unit then
-								updateFrame(frame.Health, frame.unit)
-							end
+	
+	for _, name in pairs(_headers) do
+		local header = UF.headers[name]
+		if header ~= nil then
+			for i = 1, header:GetNumChildren() do
+				local group = select(i, header:GetChildren())
+				for j = 1, group:GetNumChildren() do
+					local frame = select(j, group:GetChildren())
+					if frame and frame.Health and frame.unit then
+						if unit == frame.unit then
+							updateFrame(frame.Health, frame.unit)
 						end
 					end
 				end
@@ -283,8 +299,9 @@ end
 
 -- Hooks unit frames' PostUpdateColor to plugin functionality 
 local function hookToUnitFrames()	
-	for name, enabled in pairs(E.db.BH.trackedHeaders) do
-		if enabled then
+	local _headers = GetActiveFrames()
+
+	for _, name in pairs(_headers) do
 			local header = UF.headers[name]
 			if header ~= nil and headers[name] == false then
 				for i = 1, header:GetNumChildren() do
@@ -303,7 +320,6 @@ local function hookToUnitFrames()
 			else
 				headers[name] = false
 			end
-		end
 	end
 end 
 
@@ -327,7 +343,7 @@ end
 -- Called at the start of the plugin
 function BH:Initialize()
 	EP:RegisterPlugin(addon, BH.GetOptions) 
-	if E.db["BH"].enable then
+	if E.db.BH.enable then
 		BH:enablePlugin()
 	end
 end
