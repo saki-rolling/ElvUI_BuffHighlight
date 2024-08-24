@@ -1,0 +1,10 @@
+## Interface: 110002
+## Author: saki-rolling
+## Version: 4.0
+## Title: |cff1784d1ElvUI|r |cff00b3ffSHighlight|r
+## Notes: Simple ElvUI plugin that allows to highlight group frames when a unit is buffed.
+## RequiredDeps: ElvUI
+
+core.lua
+profile.lua
+options.lua
