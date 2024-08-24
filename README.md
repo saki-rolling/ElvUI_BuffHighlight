@@ -1,4 +1,4 @@
-# ElvUI Buff Highlight Plugin
+# ElvUI SHighlight Plugin
 Forked from https://github.com/Vekkt/ElvUI_BuffHighlight
 
 This version:
